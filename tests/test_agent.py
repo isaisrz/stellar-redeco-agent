@@ -59,3 +59,17 @@ def test_end_to_end_non_client():
     draft = [x for x in out if x["action"] == "draft_ready"][0]
     assert draft["template"] == "B" and draft["to"] == "officer"
     assert not any(x["action"].startswith("file") for x in out)
+
+
+def test_client_case_without_caller_number_gets_a_draft():
+    # Regression for v0.1.0 (found by Nanda Town): a citation for a caller number
+    # the complaint never mentioned blocked every such draft.
+    a = Agent()
+    c = {"folio": "2026/REDECO/91058", "received": "28/10/2026", "deadline": "11/11/2026",
+         "claimant": "Persona Sintetica Dos", "says_is_client": "No", "phone_called": "8100000002",
+         "reason": "Gestiones de cobro a terceros"}
+    a.handle({"type": "portal_snapshot", "today": "2026-10-28", "ok": True, "complaints": [c]})
+    out = a.handle({"type": "client_message", "today": "2026-10-28", "id": "m1",
+                    "text": "Sobre la queja 2026/REDECO/91058: Persona Sintetica Dos es cliente de la entidad."})
+    draft = [x for x in out if x["action"] == "draft_ready"][0]
+    assert draft["template"] == "A" and len(draft["citations"]) == 1

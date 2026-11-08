@@ -213,8 +213,12 @@ class Agent:
         records = self._statement_records(case)
         caller = self._statement_caller(case)
         is_client = "es cliente" in evidence.norm(records) and "no corresponden" not in evidence.norm(records)
-        citations = [{"claim": "client status per entity records", "quote": records},
-                     {"claim": "number that made the collection contact", "quote": caller}]
+        citations = [{"claim": "client status per entity records", "quote": records}]
+        if case.complaint.get("phone_caller"):
+            # Only cite what the draft actually relies on. v0.1.0 always cited the
+            # caller number, so a complaint without one could never be drafted
+            # (found by the Nanda Town redeco_compliance scenario).
+            citations.append({"claim": "number that made the collection contact", "quote": caller})
         if is_client:
             body = (f"SÍ se identificó a la persona que presenta la queja, ya que SÍ es cliente de esta Entidad. "
                     f"El número {c.get('phone_called', '')} que señaló corresponde a sus datos de contacto.")

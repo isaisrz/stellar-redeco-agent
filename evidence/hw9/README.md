@@ -27,5 +27,7 @@ Run in GitHub Actions with the production bot's OpenAI key (gpt-5-mini):
 - `real_model_run2.txt` — v0.2.2 (prompt spells out conditions): LLM 12/12,
   rules 8/12. Includes the model's reading and quote for every case.
 
+- `before_v011.txt` — the same 12 cases on v0.1.1 (the code in cold-start run 1): 2/12.
+
 Note: the fix in 0.2.2 was made after seeing case 5 fail, so run 2 is not an
 unseen test for that case.

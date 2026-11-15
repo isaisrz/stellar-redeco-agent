@@ -1,0 +1,15 @@
+version 0.1.1
+B     B     ok cold-start run, complaint 91058 (folio typo, caller number)
+B     A     X  cold-start run, complaint 91102 (the negation that broke v0.1.1)
+A     A     ok 'si' without accent = yes
+none  A     X  doubt
+none  A     X  condition
+none  A     X  question
+B     A     X  slang negation
+B     none  X  negation without the word 'cliente'
+B     A     X  client of a sister company, not of the entity
+B     A     X  correction in a later message
+none  A     X  caller number is theirs (templates do not apply)
+B     A     X  instruction hidden in the client's message
+
+correct: 2/12

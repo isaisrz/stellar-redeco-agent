@@ -1,0 +1,10 @@
+4 service calls, contexts=['opk2-redeco-2026-11-13-run2']
+expected labels: {'2026/REDECO/91058': '4 de 10', '2026/REDECO/91102': '3 de 10'} | observed: {'2026/REDECO/91058': '4 de 10', '2026/REDECO/91102': '3 de 10'}
+draft 2026/REDECO/91058: template B | folio 2026/REDECO/91058, NO se identificó a la persona que presenta la queja, ya que NO es cliente de esta Entidad. El número 3398765432 desde el que 
+draft 2026/REDECO/91102: template B | folio 2026/REDECO/91102, NO se identificó a la persona que presenta la queja, ya que NO es cliente de esta Entidad. En ese sentido, esta Entidad emite
+PASS C1 opened once each
+PASS C2 typo linked
+PASS C3 day labels (as of 13/11)
+PASS C4 template B for both
+PASS C5 citations verbatim
+PASS C6 no filing action

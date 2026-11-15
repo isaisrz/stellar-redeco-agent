@@ -1,0 +1,10 @@
+4 service calls, contexts=['sofom-redeco-2026-11-13-run1']
+expected labels: {'2026/REDECO/91058': '4 de 10', '2026/REDECO/91102': '3 de 10'} | observed: {'2026/REDECO/91058': '4 de 10', '2026/REDECO/91102': '3 de 10'}
+draft 2026/REDECO/91058: template B | folio 2026/REDECO/91058, NO se identificó a la persona que presenta la queja, ya que NO es cliente de esta Entidad. El teléfono y correo que señaló no
+draft 2026/REDECO/91102: template A | folio 2026/REDECO/91102, SÍ se identificó a la persona que presenta la queja, ya que SÍ es cliente de esta Entidad. El número 3322220002 que señaló co
+PASS C1 opened once each
+PASS C2 typo linked
+PASS C3 day labels (as of 13/11)
+FAIL C4 template B for both
+PASS C5 citations verbatim
+PASS C6 no filing action

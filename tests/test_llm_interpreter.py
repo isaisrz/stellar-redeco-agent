@@ -27,12 +27,12 @@ class Model:
     def __init__(self, *answers):
         self.answers, self.prompts = list(answers), []
 
-    def __call__(self, payload, key):
-        self.prompts.append(payload["messages"][0]["content"])
+    def __call__(self, prompt, model, key):
+        self.prompts.append(prompt)
         a = self.answers.pop(0)
         if isinstance(a, Exception):
             raise a
-        return {"content": [{"type": "text", "text": a if isinstance(a, str) else json.dumps(a)}]}
+        return a if isinstance(a, str) else json.dumps(a)
 
 
 def agent(model, complaints=(C2,)):
@@ -127,8 +127,10 @@ def test_caller_number_owned_by_entity_goes_to_officer():
 def test_default_interpreter(monkeypatch):
     monkeypatch.delenv("STELLAR_INTERPRETER", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     assert interpret.default() is interpret.rules            # offline: phrase rules
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-x")
     assert interpret.default() is not interpret.rules        # key present: the model reads
+    assert interpret.provider() == ("openai", "gpt-5-mini")
     monkeypatch.setenv("STELLAR_INTERPRETER", "rules")
     assert interpret.default() is interpret.rules

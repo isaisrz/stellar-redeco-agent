@@ -50,8 +50,10 @@ stellar-redeco-agent serve --port 8950              # Ctrl+C to stop
 To let the LLM read the client's messages, set before `serve`:
 
 ```bash
-export ANTHROPIC_API_KEY=...          # without it: offline phrase rules
-export STELLAR_LLM_MODEL=claude-sonnet-5-5   # optional
+export OPENAI_API_KEY=...       # model gpt-5-mini by default
+# or: export ANTHROPIC_API_KEY=...   # model claude-sonnet-5-5 by default
+export STELLAR_LLM_MODEL=...    # optional override
+# no key: offline phrase rules
 ```
 
 The agent card's `interpreter` field shows which one is active.
@@ -162,7 +164,7 @@ any `blocked` as a task for the named `owner`.
   because 16/11 is non-working.
 - State lives in memory; restarting the server forgets every `contextId`.
 - Synthetic data only. Do not send real personal data. In LLM mode the client's
-  messages and the complaint are sent to the Anthropic API.
+  messages and the complaint are sent to the model provider (OpenAI or Anthropic).
 - If the LLM cannot be reached or answers in an unexpected format, the case is
   `blocked` (no draft and no new questions to the client) until the next read.
 - Drafts cover the two collection-complaint answers Stellar uses most (claimant

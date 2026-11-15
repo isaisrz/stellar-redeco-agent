@@ -7,10 +7,11 @@ answer rests on. The agent does not trust the reading blindly: the quote is
 checked verbatim against the messages (evidence.unsupported), and the human
 officer reviews every draft. Anything unclear goes back to the client.
 
-    STELLAR_INTERPRETER=llm    use the LLM (needs ANTHROPIC_API_KEY)
-    STELLAR_INTERPRETER=rules  phrase rules only (offline, deterministic; v0.1.x)
-    unset                      llm if ANTHROPIC_API_KEY is set, otherwise rules
-    STELLAR_LLM_MODEL          model id (default claude-sonnet-5-5)
+    OPENAI_API_KEY             use an OpenAI model (default gpt-5-mini, as the production bot)
+    ANTHROPIC_API_KEY          or an Anthropic model (default claude-sonnet-5-5)
+    STELLAR_LLM_MODEL          override the model id
+    STELLAR_INTERPRETER=rules  force the offline phrase rules (deterministic; v0.1.x)
+    no key                     offline phrase rules
 
 Every interpreter returns:
     {"client_status": "client" | "not_client" | "unclear" | "conflict",
@@ -92,22 +93,49 @@ Messages (oldest first):
 Reply with JSON only:
 {{"client_status": "...", "client_quote": "..." or null, "caller": "..." or null, "caller_quote": "..." or null}}"""
 
-API_URL = "https://api.anthropic.com/v1/messages"
-
-
-def _post(payload: dict[str, Any], api_key: str) -> dict[str, Any]:
+def _post_anthropic(prompt: str, model: str, key: str) -> str:
     import httpx
-    r = httpx.post(API_URL, json=payload, timeout=60,
-                   headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
-                            "content-type": "application/json"})
+    r = httpx.post("https://api.anthropic.com/v1/messages", timeout=120,
+                   json={"model": model, "max_tokens": 400, "temperature": 0,
+                         "messages": [{"role": "user", "content": prompt}]},
+                   headers={"x-api-key": key, "anthropic-version": "2023-06-01"})
     r.raise_for_status()
-    return r.json()
+    return "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
+
+
+def _post_openai(prompt: str, model: str, key: str) -> str:
+    # Same call as the production bot (bot/borradores.py): Chat Completions.
+    import httpx
+    base = "https://api.openai.com/v1" if key.startswith("sk-") else os.environ.get(
+        "OPENAI_BASE_URL", "https://api.openai.com/v1")
+    r = httpx.post(base.rstrip("/") + "/chat/completions", timeout=120,
+                   json={"model": model, "reasoning_effort": "low",
+                         "messages": [{"role": "user", "content": prompt}]},
+                   headers={"Authorization": f"Bearer {key}"})
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+def provider() -> tuple[str, str] | None:
+    """(provider, model) from the environment, or None when no key is set."""
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai", os.environ.get("STELLAR_LLM_MODEL", "gpt-5-mini")
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic", os.environ.get("STELLAR_LLM_MODEL", "claude-sonnet-5-5")
+    return None
 
 
 def llm(model: str | None = None, api_key: str | None = None,
-        post: Callable[[dict[str, Any], str], dict[str, Any]] = _post) -> Interpreter:
-    model = model or os.environ.get("STELLAR_LLM_MODEL", "claude-sonnet-5-5")
-    key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        post: Callable[[str, str, str], str] | None = None) -> Interpreter:
+    """post(prompt, model, key) -> model text. Tests inject a stub; by default the
+    provider is chosen from the environment."""
+    prov = provider()
+    if post is None:
+        if prov is None:
+            raise InterpreterError("no OPENAI_API_KEY or ANTHROPIC_API_KEY set")
+        post = _post_openai if prov[0] == "openai" else _post_anthropic
+    model = model or (prov[1] if prov else "test-model")
+    key = api_key or os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
 
     def interpret(complaint: dict[str, Any], messages: list[str]) -> dict[str, Any]:
         caller = complaint.get("phone_caller") or None
@@ -115,9 +143,7 @@ def llm(model: str | None = None, api_key: str | None = None,
                                caller=caller or "not given",
                                messages="\n".join(f"[{i + 1}] {m}" for i, m in enumerate(messages)))
         try:
-            resp = post({"model": model, "max_tokens": 400, "temperature": 0,
-                         "messages": [{"role": "user", "content": prompt}]}, key)
-            text = "".join(b.get("text", "") for b in resp.get("content", []) if b.get("type") == "text")
+            text = post(prompt, model, key)
             out = json.loads(re.search(r"\{.*\}", text, re.S).group(0))
         except Exception as exc:  # network, HTTP, or an answer that is not JSON
             raise InterpreterError(f"{type(exc).__name__}: {exc}") from exc
@@ -135,6 +161,6 @@ def llm(model: str | None = None, api_key: str | None = None,
 
 def default() -> Interpreter:
     mode = os.environ.get("STELLAR_INTERPRETER", "").lower()
-    if mode == "rules" or (not mode and not os.environ.get("ANTHROPIC_API_KEY")):
+    if mode == "rules" or provider() is None:
         return rules
     return llm()

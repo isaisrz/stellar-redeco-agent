@@ -59,6 +59,10 @@ with reason, owner and next action), `duplicate_ignored`, `noted`.
 
 ## Versions
 
+- `0.2.1` — the model can be OpenAI (default `gpt-5-mini`, the same call as the
+  production bot) or Anthropic, chosen by which API key is set.
+  `evidence/hw9/real_model_check.py` compares the model with the offline rules
+  on the cold-start messages and harder phrasings.
 - `0.2.0` — an LLM now reads the client's messages (is the claimant a client?
   is the caller number theirs?) and quotes the sentence it relied on; code
   verifies each quote verbatim, and unclear, contradictory or unverifiable

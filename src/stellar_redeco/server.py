@@ -21,9 +21,8 @@ from .agent import Agent
 
 
 def interpreter_name() -> str:
-    import os
     f = interpret.default()
-    return "rules" if f is interpret.rules else "llm:" + os.environ.get("STELLAR_LLM_MODEL", "claude-sonnet-5-5")
+    return "rules" if f is interpret.rules else "llm:%s/%s" % interpret.provider()
 
 
 def agent_card(base_url: str) -> dict[str, Any]:

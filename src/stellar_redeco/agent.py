@@ -53,6 +53,7 @@ class Case:
     reminded: bool = False
     draft: dict[str, Any] | None = None
     approved: bool = False
+    blocked_reason: str | None = None
 
 
 class Agent:
@@ -152,9 +153,10 @@ class Agent:
         need = []
         if not src:
             need.append("analysis")
-        if not self._statement_records(case):
+        status, _ = self._client_status(case)
+        if status is None:
             need.append("records")
-        if case.complaint.get("phone_caller") and not self._statement_caller(case):
+        if case.complaint.get("phone_caller") and self._caller_statement(case)[0] is None:
             need.append("caller_number")
         return need
 
@@ -197,34 +199,62 @@ class Agent:
 
     # -- drafting ---------------------------------------------------------
 
-    def _statement_records(self, case: Case) -> str | None:
-        s = case.client_texts
-        return (evidence.find_sentence(s, "no corresponden", "cliente")
-                or evidence.find_sentence(s, "es cliente"))
+    def _client_status(self, case: Case) -> tuple[str | None, str | None]:
+        """('client'|'not_client'|'conflict'|None, quote). Polarity-aware since v0.1.2."""
+        found = [(evidence.client_status(x), x) for x in evidence.sentences(case.client_texts)]
+        found = [(st, x) for st, x in found if st]
+        if not found:
+            return None, None
+        if len({st for st, _ in found}) > 1:
+            return "conflict", " | ".join(x for _, x in found)
+        return found[0]
 
-    def _statement_caller(self, case: Case) -> str | None:
-        caller = str(case.complaint.get("phone_caller", ""))
-        return evidence.find_sentence(case.client_texts, caller) if caller else None
+    def _caller_statement(self, case: Case) -> tuple[str | None, str | None]:
+        caller = "".join(ch for ch in str(case.complaint.get("phone_caller", "")) if ch.isdigit())
+        if not caller:
+            return None, None
+        for x in evidence.sentences(case.client_texts):
+            if caller in "".join(ch for ch in x if ch.isdigit()):
+                own = evidence.caller_ownership(x)
+                if own:
+                    return own, x
+        return None, None
+
+    def _block(self, case: Case, key: str, reason: str, next_action: str):
+        if case.blocked_reason == key:  # one alert per problem, not one per message
+            return []
+        case.blocked_reason = key
+        return [{"action": "blocked", "to": "officer", "folio": case.folio, "reason": reason,
+                 "owner": "compliance officer", "next_action": next_action}]
 
     def _maybe_draft(self, case: Case):
-        if case.draft or self._missing(case):
+        status, records = self._client_status(case)
+        if case.draft and status != "conflict":
+            return []
+        if status == "conflict":
+            withdrawn = bool(case.draft and not case.approved)
+            if withdrawn:
+                case.draft = None  # a later message contradicts the draft: withdraw it
+            return self._block(case, "conflict", ("previous draft withdrawn; " if withdrawn else "")
+                               + "client statements contradict each other on whether the claimant is a client: "
+                               + records, "confirm with the client before any draft")
+        if self._missing(case):
             return []
         c = case.complaint
-        records = self._statement_records(case)
-        caller = self._statement_caller(case)
-        is_client = "es cliente" in evidence.norm(records) and "no corresponden" not in evidence.norm(records)
-        citations = [{"claim": "client status per entity records", "quote": records}]
-        if case.complaint.get("phone_caller"):
-            # Only cite what the draft actually relies on. v0.1.0 always cited the
-            # caller number, so a complaint without one could never be drafted
-            # (found by the Nanda Town redeco_compliance scenario).
-            citations.append({"claim": "number that made the collection contact", "quote": caller})
-        if is_client:
-            body = (f"SÍ se identificó a la persona que presenta la queja, ya que SÍ es cliente de esta Entidad. "
-                    f"El número {c.get('phone_called', '')} que señaló corresponde a sus datos de contacto.")
-        else:
-            body = (f"NO se identificó a la persona que presenta la queja, ya que NO es cliente de esta Entidad. "
-                    f"El teléfono y correo que señaló no se encuentran en la base de datos de esta Entidad.")
+        is_client = status == "client"
+        citations = [{"claim": "claimant is a client" if is_client else "claimant is not a client",
+                      "quote": records}]
+        body = ("SÍ se identificó a la persona que presenta la queja, ya que SÍ es cliente de esta Entidad."
+                if is_client else
+                "NO se identificó a la persona que presenta la queja, ya que NO es cliente de esta Entidad.")
+        if c.get("phone_caller"):
+            own, quote = self._caller_statement(case)
+            if own == "ours":
+                return self._block(case, "caller_ours", f"the client says the caller number {c['phone_caller']} is theirs; "
+                                   "the standard templates do not apply", "officer writes this answer")
+            # Only cite what the draft states (v0.1.1), and state what it cites (v0.1.2).
+            citations.append({"claim": "caller number does not belong to the entity", "quote": quote})
+            body += f" El número {c['phone_caller']} desde el que se realizó la llamada no pertenece a esta Entidad."
         text = (f"Referencia: folio {case.folio}\n\nC. {c.get('claimant', '').upper()}.\n\n"
                 f"En atención a la queja presentada a través del REDECO con folio {case.folio}, {body} "
                 f"En ese sentido, esta Entidad emite su respuesta Desfavorable al Usuario, toda vez que no se "

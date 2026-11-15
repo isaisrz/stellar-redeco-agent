@@ -72,17 +72,22 @@ portal shows them) or ISO.
 
 ```json
 {"type": "portal_snapshot", "today": "2026-11-12", "ok": true,
- "complaints": [{
-   "folio": "2026/REDECO/91058",     // required, format YYYY/REDECO/NNNNN
-   "received": "09/11/2026",         // required, "Fecha de recepción"
-   "deadline": "23/11/2026",         // required, "Fecha límite de respuesta"
-   "claimant": "Nombre Apellido",    // name of the person who complained
-   "says_is_client": "No",           // what the claimant declared on the portal
-   "phone_called": "3300000001",     // number that received the collection call
-   "phone_caller": "3300000009",     // number that made the call (omit if the portal has none)
-   "reason": "Gestiones de cobro a terceros"  // complaint cause
- }]}
+ "complaints": [{"folio": "2026/REDECO/91058", "received": "09/11/2026",
+   "deadline": "23/11/2026", "claimant": "Nombre Apellido", "says_is_client": "No",
+   "phone_called": "3300000001", "phone_caller": "3300000009",
+   "reason": "Gestiones de cobro a terceros"}]}
 ```
+
+| field | portal column | required | notes |
+|---|---|---|---|
+| `folio` | Folio | yes | `YYYY/REDECO/NNNNN` |
+| `received` | Fecha de recepción | yes | |
+| `deadline` | Fecha límite de respuesta | yes | |
+| `claimant` | Nombre del usuario | no | used in the draft heading |
+| `says_is_client` | ¿Dice ser cliente? | no | what the claimant declared; informational |
+| `phone_called` | Teléfono al que llamaron | no | |
+| `phone_caller` | Número que realizó la llamada | no | **omit** when the portal field is empty; when present, the client must say whether it is theirs |
+| `reason` | Causa | no | quoted at the end of the draft |
 
 If the portal could not be read, send `{"type": "portal_snapshot", "today": ..., "ok": false, "error": "why"}`.
 The service answers `blocked` (never "nothing open").
@@ -97,7 +102,8 @@ The service answers `blocked` (never "nothing open").
 - `id` must be unique per message; a repeated `id` is ignored as a duplicate.
 - The text must contain the folio in the form `YYYY/REDECO/NNNNN` (or with
   `-`). A message with no folio is only `noted`.
-- A folio one digit away from exactly one open complaint is linked to it
+- A folio one edit away (one digit changed, two adjacent digits swapped, or one
+  digit added or missing) from exactly one open complaint is linked to it
   (`case_linked`). If it matches none (or two), it is kept and linked when the
   complaint appears in a later `portal_snapshot`.
 - The service recognizes the client's statement **in Spanish** (see §8).
@@ -109,7 +115,7 @@ one reminder per case, after 2 business days without an answer.
 
 ### `officer_approval`
 
-`{"type": "officer_approval", "folio": "2026/REDECO/91058"}` — records that the
+`{"type": "officer_approval", "folio": "2026/REDECO/91058"}` (no `today` needed) — records that the
 human officer approved the draft. Filing remains the officer's job.
 
 ## 6. Output actions
@@ -121,10 +127,10 @@ Each action has `action`; actions meant for someone have `to`.
 | `case_opened` | — | new complaint, `folio` |
 | `duplicate_ignored` | — | same complaint or same message `id` seen again |
 | `case_linked` | — | `chat_folio` (as the client typed it) → `portal_folio` |
-| `deadline` | — | `label` e.g. `"4 de 10"` (business days elapsed of total, as the portal shows), `deadline` |
-| `request_evidence` | `client` | `items` (catalogue keys `analysis`, `records`, `caller_number`), `text` ready to send, `reminder: true` on the follow-up |
+| `deadline` | — | `day`, `of`, `label` e.g. `"4 de 10"` (business days elapsed, receipt day included and today excluded, of business days up to the deadline — the portal's counter), `deadline` |
+| `request_evidence` | `client` | `items` (catalogue keys `analysis`, `records`, `caller_number`), `text` ready to send (English in this public build; production sends the Spanish catalogue), `reminder: true` on the follow-up |
 | `draft_ready` | `officer` | `text` (Spanish answer), `template` (`A` claimant is a client, `B` is not), `sense`, `citations` [{claim, quote}] |
-| `blocked` | `officer` | something needs a human: `reason`, `owner`, `next_action` |
+| `blocked` | `officer` | something needs a human: `reason`, `owner`, `next_action`. Sent once per problem; a contradiction after a draft also **withdraws** that draft |
 | `noted` | — | recorded, nothing to do (`reason`) |
 
 A calling agent should: deliver `request_evidence.text` to the client unchanged,
@@ -134,8 +140,11 @@ any `blocked` as a task for the named `owner`.
 ## 7. Limits and permissions
 
 - Never files with CONDUSEF and has no action that could.
-- Calendar: only 2026 CONDUSEF non-working days are loaded. Any date outside
-  2026 fails closed (`failed` task or `blocked`).
+- Calendar: only 2026 CONDUSEF non-working days are loaded (weekends plus 1–2 Jan,
+  2 Feb, 16 Mar, 2–3 Apr, 1 and 5 May, 20–31 Jul, 16 Sep, 2 and 16 Nov,
+  17–31 Dec). Any date outside 2026 fails closed (`failed` task or `blocked`).
+  Example: received 09/11/2026, due 23/11/2026 is exactly 10 business days
+  because 16/11 is non-working.
 - State lives in memory; restarting the server forgets every `contextId`.
 - Synthetic data only. Do not send real personal data.
 - Drafts cover the two collection-complaint answers Stellar uses most (claimant
@@ -145,13 +154,24 @@ any `blocked` as a task for the named `owner`.
 
 A draft is released only when the client's messages contain:
 
-1. a sentence stating whether the claimant is a client — currently recognized
-   when a sentence contains **"es cliente"**, or contains both
-   **"no corresponden"** and **"cliente"** (accents and case ignored); and
-2. if the complaint has a `phone_caller`, a sentence that mentions that number.
+1. **a clear statement of whether the claimant is a client.** Recognized
+   (accents and case ignored), for example: "no es cliente", "no es nuestro
+   cliente", "no corresponden a ningún cliente", "no aparece", "no lo tenemos
+   registrado" → **not a client** (template B); "es cliente", "sí es cliente",
+   "es nuestro cliente" → **a client** (template A). Anything else ("lo estamos
+   revisando") is not treated as an answer: the agent keeps asking.
+   If two messages contradict each other, no draft is produced (an existing
+   unapproved draft is withdrawn) and `blocked` goes to the officer.
+2. **if the complaint has a `phone_caller`:** a sentence with that number saying
+   whether it is the entity's ("no pertenece", "no es nuestro", "lo
+   desconocemos" → not ours). If the client says the number **is** theirs, the
+   standard templates do not apply and the case is `blocked` for the officer.
 
-Every citation in the draft must appear verbatim in a client message,
-otherwise the draft is withheld and `blocked` is returned.
+The draft states only what these sentences say, and each statement carries its
+quote in `citations`. A quote must appear verbatim in a client message,
+otherwise the draft is withheld and `blocked` is returned. The officer still
+reviews every draft: recognition is phrase-based, not full language
+understanding.
 
 ## 9. Worked example
 

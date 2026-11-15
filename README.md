@@ -49,11 +49,18 @@ with reason, owner and next action), `duplicate_ignored`, `noted`.
 - **Deterministic rules decide**, not a model: business days, folio linking
   (one edit away from exactly one portal folio, otherwise abstain), what to ask.
 - **Grounded drafts.** A draft is released only if every citation appears in
-  a message the client actually sent (accent- and punctuation-insensitive).
+  a message the client actually sent (accent- and punctuation-insensitive), the
+  statement's polarity matches the draft, and the draft says nothing it does not cite.
 - **Human gate.** No action files with the regulator.
 
 ## Versions
 
+- `0.1.2` — fixes a defect found by a cold-start test (HW9): a fresh calling
+  agent sent "el señor no es cliente nuestro" and v0.1.1 drafted "SÍ es
+  cliente", because it matched the substring "es cliente". Statements are now
+  classified by polarity; unrecognized statements are asked again; contradictions
+  block (and withdraw a draft); drafts state only what they cite. Interface docs
+  now list the field mapping and non-working days.
 - `0.1.1` — fixes a defect found by the Nanda Town `redeco_compliance`
   scenario: v0.1.0 always cited the "number that made the collection call",
   so a complaint without one could never be drafted.

@@ -18,6 +18,10 @@ This repository contains only the generic, deterministic logic and
 real portal reader, LLM drafting) lives in a private repository and never
 ships client data.
 
+## Interface
+
+Calling-agent documentation (inputs, outputs, limits, example): [docs/INTERFACE.md](docs/INTERFACE.md).
+
 ## Run
 
 ```bash

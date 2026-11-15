@@ -19,7 +19,23 @@ from stellar_redeco.agent import Agent
     ("Es nuestro cliente desde 2024", "client"),
     ("Lo estamos revisando", None),          # not a statement: never guessed
     ("Creo que tal vez sí", None),
+    # "si" without an accent (v0.1.3): "yes" typed without the accent ...
+    ("si es cliente.", "client"),
+    ("Si es cliente de la entidad.", "client"),
+    ("si, es cliente", "client"),
+    (__import__("unicodedata").normalize("NFD", "Sí es cliente"), "client"),   # iPhone accents
+    # ... versus "if / whether": hedges and questions are not answers
+    ("Si es cliente, lo buscamos en el sistema.", None),
+    ("Si es cliente hay que revisar su expediente", None),
+    ("No sé si es cliente", None),
+    ("no se si es cliente", None),
+    ("No sabemos si es cliente, lo revisamos", None),
+    ("Vamos a confirmar si es cliente", None),
+    ("¿Es cliente?", None),
+    ("es cliente?", None),
+    ("No sé si no es cliente", None),
 ])
+
 def test_client_status_polarity(text, expected):
     assert evidence.client_status(text) == expected
 
@@ -73,3 +89,19 @@ def test_caller_number_owned_by_entity_goes_to_officer():
     out = _run(["2026/REDECO/91102: no es cliente. El número 3398765432 sí es nuestro, de cobranza."])
     assert not any(x["action"] == "draft_ready" for x in out)
     assert [x for x in out if x["action"] == "blocked"][0]["owner"] == "compliance officer"
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("El número 3398765432 no pertenece a la entidad.", "not_ours"),
+    ("El número 3398765432 sí es nuestro.", "ours"),
+    ("No sé si el número 3398765432 es nuestro", None),
+    ("Vamos a revisar si el 3398765432 pertenece a algún despacho", None),
+    ("¿El 3398765432 es nuestro?", None),
+])
+def test_caller_ownership_hedges(text, expected):
+    assert evidence.caller_ownership(text) == expected
+
+
+def test_hedged_reply_keeps_asking_instead_of_drafting():
+    out = _run(["2026/REDECO/91102: no sé si es cliente, lo estamos revisando."], caller=None)
+    assert not any(x["action"] == "draft_ready" for x in out)

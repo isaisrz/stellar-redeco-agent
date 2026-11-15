@@ -158,13 +158,16 @@ A draft is released only when the client's messages contain:
    (accents and case ignored), for example: "no es cliente", "no es nuestro
    cliente", "no corresponden a ningún cliente", "no aparece", "no lo tenemos
    registrado" → **not a client** (template B); "es cliente", "sí es cliente",
-   "es nuestro cliente" → **a client** (template A). Anything else ("lo estamos
-   revisando") is not treated as an answer: the agent keeps asking.
+   "es nuestro cliente" → **a client** (template A); "si" without the accent
+   counts as "sí" ("si es cliente."). Anything else is not treated as an answer
+   and the agent keeps asking: "lo estamos revisando", questions ("¿es
+   cliente?"), doubt ("no sé si es cliente", "vamos a confirmar si…") and
+   conditions ("si es cliente, lo buscamos…").
    If two messages contradict each other, no draft is produced (an existing
    unapproved draft is withdrawn) and `blocked` goes to the officer.
 2. **if the complaint has a `phone_caller`:** a sentence with that number saying
    whether it is the entity's ("no pertenece", "no es nuestro", "lo
-   desconocemos" → not ours). If the client says the number **is** theirs, the
+   desconocemos" → not ours; questions and doubt are not answers). If the client says the number **is** theirs, the
    standard templates do not apply and the case is `blocked` for the officer.
 
 The draft states only what these sentences say, and each statement carries its

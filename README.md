@@ -55,6 +55,9 @@ with reason, owner and next action), `duplicate_ignored`, `noted`.
 
 ## Versions
 
+- `0.1.3` — "si" without an accent is both "yes" and "if/whether": v0.1.2
+  read "no sé si es cliente" or "¿es cliente?" as "is a client". Questions,
+  doubt and conditions are now treated as no answer (the agent asks again).
 - `0.1.2` — fixes a defect found by a cold-start test (HW9): a fresh calling
   agent sent "el señor no es cliente nuestro" and v0.1.1 drafted "SÍ es
   cliente", because it matched the substring "es cliente". Statements are now

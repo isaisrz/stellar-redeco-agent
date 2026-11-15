@@ -79,8 +79,8 @@ def test_contradiction_after_a_draft_withdraws_it_and_blocks_once():
     out = _run(["2026/REDECO/91102: sí es cliente.", "2026/REDECO/91102: perdón, no es cliente.",
                 "2026/REDECO/91102: confirmamos que no es cliente."], caller=None)
     kinds = [x["action"] for x in out]
-    assert kinds.index("draft_ready") < kinds.index("blocked")   # first draft, then withdrawn
-    assert "withdrawn" in [x for x in out if x["action"] == "blocked"][0]["reason"]
+    assert kinds.index("draft_ready") < kinds.index("draft_withdrawn") < kinds.index("blocked")
+    assert kinds.count("draft_ready") == 1                       # no new draft while they contradict
     blocked = [x for x in out if x["action"] == "blocked"]
     assert len(blocked) == 1 and blocked[0]["to"] == "officer"
 

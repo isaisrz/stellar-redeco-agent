@@ -16,8 +16,14 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 
-from . import __version__
+from . import __version__, interpret
 from .agent import Agent
+
+
+def interpreter_name() -> str:
+    import os
+    f = interpret.default()
+    return "rules" if f is interpret.rules else "llm:" + os.environ.get("STELLAR_LLM_MODEL", "claude-sonnet-5-5")
 
 
 def agent_card(base_url: str) -> dict[str, Any]:
@@ -29,6 +35,7 @@ def agent_card(base_url: str) -> dict[str, Any]:
         "url": base_url,
         "version": __version__,
         "capabilities": {"streaming": False, "pushNotifications": False},
+        "interpreter": interpreter_name(),
         "defaultInputModes": ["text"],
         "defaultOutputModes": ["text"],
         "skills": [{

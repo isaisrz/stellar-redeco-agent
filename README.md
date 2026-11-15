@@ -46,8 +46,12 @@ with reason, owner and next action), `duplicate_ignored`, `noted`.
 
 - **Fail closed.** An unreadable portal, an unknown event or a calendar year
   without published non-working days produces `blocked`, never "nothing open".
-- **Deterministic rules decide**, not a model: business days, folio linking
-  (one edit away from exactly one portal folio, otherwise abstain), what to ask.
+- **A model reads, code checks.** An LLM reads what the client wrote, the way
+  a person would, and must quote the sentence it relied on. Code decides what
+  has one right answer: business days, folio linking (one edit away from
+  exactly one portal folio, otherwise abstain), and whether each quote is
+  really in the client's messages. Without an API key, offline phrase rules read
+  the messages instead.
 - **Grounded drafts.** A draft is released only if every citation appears in
   a message the client actually sent (accent- and punctuation-insensitive), the
   statement's polarity matches the draft, and the draft says nothing it does not cite.
@@ -55,6 +59,12 @@ with reason, owner and next action), `duplicate_ignored`, `noted`.
 
 ## Versions
 
+- `0.2.0` — an LLM now reads the client's messages (is the claimant a client?
+  is the caller number theirs?) and quotes the sentence it relied on; code
+  verifies each quote verbatim, and unclear, contradictory or unverifiable
+  readings never produce a draft. A clear correction withdraws and redoes an
+  unapproved draft (`draft_withdrawn`). The phrase rules of 0.1.x remain only as
+  the offline mode. LLM mode is tested with a stubbed model.
 - `0.1.3` — "si" without an accent is both "yes" and "if/whether": v0.1.2
   read "no sé si es cliente" or "¿es cliente?" as "is a client". Questions,
   doubt and conditions are now treated as no answer (the agent asks again).

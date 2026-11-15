@@ -21,7 +21,12 @@ It **never files** with the regulator and never writes free text to the
 client: messages to the client come from a fixed catalogue. A human
 compliance officer reviews, approves and files.
 
-The service is deterministic (no LLM inside). Same inputs, same outputs.
+**Who does what.** An LLM reads the client's messages and decides what they
+say (is the claimant a client? is the caller number theirs?), quoting the exact
+sentence. Code does what has one right answer: business-day counters, folio
+links, checking that every quote is really in the client's messages, and the
+hard limit that nothing is ever filed. Without an API key the service reads
+messages with offline phrase rules instead (deterministic; see §8).
 
 ## 2. Access
 
@@ -41,6 +46,15 @@ pip install -e '.[dev]'
 pytest -q                                           # all tests should pass
 stellar-redeco-agent serve --port 8950              # Ctrl+C to stop
 ```
+
+To let the LLM read the client's messages, set before `serve`:
+
+```bash
+export ANTHROPIC_API_KEY=...          # without it: offline phrase rules
+export STELLAR_LLM_MODEL=claude-sonnet-5-5   # optional
+```
+
+The agent card's `interpreter` field shows which one is active.
 
 ## 4. Calling it
 
@@ -129,7 +143,8 @@ Each action has `action`; actions meant for someone have `to`.
 | `case_linked` | — | `chat_folio` (as the client typed it) → `portal_folio` |
 | `deadline` | — | `day`, `of`, `label` e.g. `"4 de 10"` (business days elapsed, receipt day included and today excluded, of business days up to the deadline — the portal's counter), `deadline` |
 | `request_evidence` | `client` | `items` (catalogue keys `analysis`, `records`, `caller_number`), `text` ready to send (English in this public build; production sends the Spanish catalogue), `reminder: true` on the follow-up |
-| `draft_ready` | `officer` | `text` (Spanish answer), `template` (`A` claimant is a client, `B` is not), `sense`, `citations` [{claim, quote}] |
+| `draft_ready` | `officer` | `text` (Spanish answer), `template` (`A` claimant is a client, `B` is not), `sense`, `citations` [{claim, quote}], `interpreted_by` (`llm:<model>` or `rules`) |
+| `draft_withdrawn` | `officer` | a later client message changed the facts an unapproved draft relied on; a new draft follows when the facts are clear |
 | `blocked` | `officer` | something needs a human: `reason`, `owner`, `next_action`. Sent once per problem; a contradiction after a draft also **withdraws** that draft |
 | `noted` | — | recorded, nothing to do (`reason`) |
 
@@ -146,35 +161,38 @@ any `blocked` as a task for the named `owner`.
   Example: received 09/11/2026, due 23/11/2026 is exactly 10 business days
   because 16/11 is non-working.
 - State lives in memory; restarting the server forgets every `contextId`.
-- Synthetic data only. Do not send real personal data.
+- Synthetic data only. Do not send real personal data. In LLM mode the client's
+  messages and the complaint are sent to the Anthropic API.
+- If the LLM cannot be reached or answers in an unexpected format, the case is
+  `blocked` (no draft and no new questions to the client) until the next read.
 - Drafts cover the two collection-complaint answers Stellar uses most (claimant
   is / is not a client). Other complaint types are out of scope.
 
 ## 8. What evidence produces a draft
 
-A draft is released only when the client's messages contain:
+The client's messages about a complaint are read (by the LLM, or by the
+offline rules) to answer two questions, each with the exact sentence it rests on:
 
-1. **a clear statement of whether the claimant is a client.** Recognized
-   (accents and case ignored), for example: "no es cliente", "no es nuestro
-   cliente", "no corresponden a ningún cliente", "no aparece", "no lo tenemos
-   registrado" → **not a client** (template B); "es cliente", "sí es cliente",
-   "es nuestro cliente" → **a client** (template A); "si" without the accent
-   counts as "sí" ("si es cliente."). Anything else is not treated as an answer
-   and the agent keeps asking: "lo estamos revisando", questions ("¿es
-   cliente?"), doubt ("no sé si es cliente", "vamos a confirmar si…") and
-   conditions ("si es cliente, lo buscamos…").
-   If two messages contradict each other, no draft is produced (an existing
-   unapproved draft is withdrawn) and `blocked` goes to the officer.
-2. **if the complaint has a `phone_caller`:** a sentence with that number saying
-   whether it is the entity's ("no pertenece", "no es nuestro", "lo
-   desconocemos" → not ours; questions and doubt are not answers). If the client says the number **is** theirs, the
-   standard templates do not apply and the case is `blocked` for the officer.
+1. **Is the claimant a client?** `not_client` → template B; `client` →
+   template A; `unclear` (no statement, a question, doubt, a condition such as
+   "no sé si es cliente" or "si es cliente, lo buscamos") → the agent asks the
+   client again; `conflict` (messages contradict each other and no later
+   message settles it) → no draft, `blocked` to the officer. A clear later
+   correction ("perdón, sí es cliente") replaces the earlier statement and an
+   unapproved draft is withdrawn (`draft_withdrawn`) and redone.
+2. **If the complaint has a `phone_caller`: is that number theirs?** `not_ours`
+   → stated in the draft; `ours` → the standard templates do not apply,
+   `blocked` for the officer; `unclear` → asked again.
 
-The draft states only what these sentences say, and each statement carries its
-quote in `citations`. A quote must appear verbatim in a client message,
-otherwise the draft is withheld and `blocked` is returned. The officer still
-reviews every draft: recognition is phrase-based, not full language
-understanding.
+**The reading is not trusted blindly.** Each quote must appear verbatim in the
+client's messages (accents, case and punctuation ignored). A reading whose quote
+is not there is discarded and reported as `blocked`; the agent asks again. The
+draft states only what those quotes say, and the officer reviews every draft.
+
+Offline phrase rules (no API key) recognize, e.g., "no es cliente", "no
+corresponden a ningún cliente", "no aparece", "sí es cliente"/"si es cliente.",
+and treat questions, doubt and conditions as unclear. They are a fallback:
+phrasings they do not know are asked again.
 
 ## 9. Worked example
 

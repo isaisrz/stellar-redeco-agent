@@ -1,4 +1,6 @@
-"""The REDECO compliance agent as a deterministic state machine.
+"""The REDECO compliance agent: a state machine whose reading of the client's
+messages comes from an interpreter (an LLM, or offline phrase rules; see
+interpret.py) and is verified against the messages before any draft.
 
 It does the compliance officer's preparation work and nothing more:
 read the regulator portal, open one case per complaint, link the client's
@@ -29,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import calendar, evidence, folios
+from . import calendar, evidence, folios, interpret
 
 REMIND_AFTER_BUSINESS_DAYS = 2
 
@@ -54,10 +56,13 @@ class Case:
     draft: dict[str, Any] | None = None
     approved: bool = False
     blocked_reason: str | None = None
+    reading: dict[str, Any] | None = None     # interpreter output for client_texts[:reading_n]
+    reading_n: int = 0
 
 
 class Agent:
-    def __init__(self) -> None:
+    def __init__(self, interpreter: interpret.Interpreter | None = None) -> None:
+        self.interpreter = interpreter or interpret.default()
         self.cases: dict[str, Case] = {}
         self.seen_messages: set[str] = set()
         self.unlinked: list[dict[str, Any]] = []  # client messages naming unknown folios
@@ -148,15 +153,32 @@ class Agent:
 
     # -- evidence requests -------------------------------------------------
 
+    def _read(self, case: Case) -> dict[str, Any]:
+        """What the client said, read by the interpreter (LLM or rules). Re-read only when a
+        new message arrives. A reading whose quote is not verbatim in the messages is
+        discarded: the conclusion is kept only if the client's own words support it."""
+        if case.reading is None or case.reading_n != len(case.client_texts):
+            r = self.interpreter(case.complaint, list(case.client_texts))  # may raise InterpreterError
+            r = dict(r, unverified=[])
+            for status_key, quote_key, open_values in (("client_status", "client_quote", ("unclear", "conflict")),
+                                                       ("caller", "caller_quote", ("unclear", None))):
+                if r.get(status_key) in open_values:
+                    continue
+                if evidence.unsupported([{"claim": status_key, "quote": r.get(quote_key) or ""}], case.client_texts):
+                    r["unverified"].append(status_key)
+                    r[status_key] = "unclear"
+            case.reading, case.reading_n = r, len(case.client_texts)
+        return case.reading
+
     def _missing(self, case: Case) -> list[str]:
-        src = case.client_texts
+        if not case.client_texts:
+            need = ["analysis", "records"]
+            return need + (["caller_number"] if case.complaint.get("phone_caller") else [])
+        r = self._read(case)
         need = []
-        if not src:
-            need.append("analysis")
-        status, _ = self._client_status(case)
-        if status is None:
+        if r["client_status"] == "unclear":
             need.append("records")
-        if case.complaint.get("phone_caller") and self._caller_statement(case)[0] is None:
+        if case.complaint.get("phone_caller") and r["caller"] == "unclear":
             need.append("caller_number")
         return need
 
@@ -170,7 +192,10 @@ class Agent:
     def _maybe_ask(self, case: Case, today: str):
         if case.draft:
             return []
-        need = self._missing(case)
+        try:
+            need = self._missing(case)
+        except interpret.InterpreterError as exc:
+            return self._interpreter_down(case, exc)
         if not need:
             return []
         new = [k for k in need if k not in case.asked]
@@ -199,27 +224,6 @@ class Agent:
 
     # -- drafting ---------------------------------------------------------
 
-    def _client_status(self, case: Case) -> tuple[str | None, str | None]:
-        """('client'|'not_client'|'conflict'|None, quote). Polarity-aware since v0.1.2."""
-        found = [(evidence.client_status(x), x) for x in evidence.sentences(case.client_texts)]
-        found = [(st, x) for st, x in found if st]
-        if not found:
-            return None, None
-        if len({st for st, _ in found}) > 1:
-            return "conflict", " | ".join(x for _, x in found)
-        return found[0]
-
-    def _caller_statement(self, case: Case) -> tuple[str | None, str | None]:
-        caller = "".join(ch for ch in str(case.complaint.get("phone_caller", "")) if ch.isdigit())
-        if not caller:
-            return None, None
-        for x in evidence.sentences(case.client_texts):
-            if caller in "".join(ch for ch in x if ch.isdigit()):
-                own = evidence.caller_ownership(x)
-                if own:
-                    return own, x
-        return None, None
-
     def _block(self, case: Case, key: str, reason: str, next_action: str):
         if case.blocked_reason == key:  # one alert per problem, not one per message
             return []
@@ -227,33 +231,54 @@ class Agent:
         return [{"action": "blocked", "to": "officer", "folio": case.folio, "reason": reason,
                  "owner": "compliance officer", "next_action": next_action}]
 
+    def _interpreter_down(self, case: Case, exc: Exception):
+        # Fail closed: no reading means no draft and no new questions to the client.
+        return self._block(case, "interpreter", f"could not read the client's messages: {exc}",
+                           "retry next run; meanwhile the officer reads the chat")
+
     def _maybe_draft(self, case: Case):
-        status, records = self._client_status(case)
-        if case.draft and status != "conflict":
-            return []
+        try:
+            r = self._read(case)
+            missing = self._missing(case)
+        except interpret.InterpreterError as exc:
+            return self._interpreter_down(case, exc)
+        out = []
+        if r["unverified"]:
+            out += self._block(case, "unverified:" + ",".join(r["unverified"]),
+                               "the interpreter's quote for " + ", ".join(r["unverified"])
+                               + " is not in the client's messages; reading discarded",
+                               "the agent asks the client again; officer may read the chat")
+        status = r["client_status"]
+        if case.draft and not case.approved:
+            same = (status == ("client" if case.draft["template"] == "A" else "not_client")
+                    and r["caller"] != "ours")
+            if same:
+                return out
+            # A later message changed what the client says: the old draft no longer holds.
+            out.append({"action": "draft_withdrawn", "to": "officer", "folio": case.folio,
+                        "reason": "a later client message changed the facts the draft relied on"})
+            case.draft = None
+        elif case.draft:
+            return out
         if status == "conflict":
-            withdrawn = bool(case.draft and not case.approved)
-            if withdrawn:
-                case.draft = None  # a later message contradicts the draft: withdraw it
-            return self._block(case, "conflict", ("previous draft withdrawn; " if withdrawn else "")
-                               + "client statements contradict each other on whether the claimant is a client: "
-                               + records, "confirm with the client before any draft")
-        if self._missing(case):
-            return []
+            return out + self._block(case, "conflict", "the client's messages contradict each other on "
+                                     "whether the claimant is a client", "confirm with the client before any draft")
+        if missing:
+            return out
         c = case.complaint
         is_client = status == "client"
         citations = [{"claim": "claimant is a client" if is_client else "claimant is not a client",
-                      "quote": records}]
+                      "quote": r["client_quote"]}]
         body = ("SÍ se identificó a la persona que presenta la queja, ya que SÍ es cliente de esta Entidad."
                 if is_client else
                 "NO se identificó a la persona que presenta la queja, ya que NO es cliente de esta Entidad.")
         if c.get("phone_caller"):
-            own, quote = self._caller_statement(case)
-            if own == "ours":
-                return self._block(case, "caller_ours", f"the client says the caller number {c['phone_caller']} is theirs; "
-                                   "the standard templates do not apply", "officer writes this answer")
+            if r["caller"] == "ours":
+                return out + self._block(case, "caller_ours", f"the client says the caller number "
+                                         f"{c['phone_caller']} is theirs; the standard templates do not apply",
+                                         "officer writes this answer")
             # Only cite what the draft states (v0.1.1), and state what it cites (v0.1.2).
-            citations.append({"claim": "caller number does not belong to the entity", "quote": quote})
+            citations.append({"claim": "caller number does not belong to the entity", "quote": r["caller_quote"]})
             body += f" El número {c['phone_caller']} desde el que se realizó la llamada no pertenece a esta Entidad."
         text = (f"Referencia: folio {case.folio}\n\nC. {c.get('claimant', '').upper()}.\n\n"
                 f"En atención a la queja presentada a través del REDECO con folio {case.folio}, {body} "
@@ -261,12 +286,14 @@ class Agent:
                 f"acredita la conducta señalada ({c.get('reason', '')}).")
         bad = evidence.unsupported(citations, case.client_texts)
         if bad:  # grounding failed: do not hand the officer an ungrounded draft
-            return [{"action": "blocked", "to": "officer", "folio": case.folio,
-                     "reason": "draft claims without a client quote: " + "; ".join(b["claim"] for b in bad),
-                     "owner": "agent", "next_action": "ask the client"}]
+            return out + [{"action": "blocked", "to": "officer", "folio": case.folio,
+                           "reason": "draft claims without a client quote: " + "; ".join(b["claim"] for b in bad),
+                           "owner": "agent", "next_action": "ask the client"}]
+        case.blocked_reason = None
         case.draft = {"folio": case.folio, "sense": "Desfavorable al Usuario",
-                      "template": "A" if is_client else "B", "text": text, "citations": citations}
-        return [{"action": "draft_ready", "to": "officer", **case.draft}]
+                      "template": "A" if is_client else "B", "text": text, "citations": citations,
+                      "interpreted_by": r["by"]}
+        return out + [{"action": "draft_ready", "to": "officer", **case.draft}]
 
     def _on_officer_approval(self, ev):
         case = self.cases.get(ev.get("folio", ""))

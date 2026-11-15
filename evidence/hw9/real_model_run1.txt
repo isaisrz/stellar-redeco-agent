@@ -1,0 +1,17 @@
+model: openai/gpt-5-mini
+
+case                                                    expected  LLM       rules    
+cold-start run, complaint 91058 (folio typo, caller num B         B ok      B ok     
+cold-start run, complaint 91102 (the negation that brok B         B ok      B ok     
+'si' without accent = yes                               A         A ok      A ok     
+doubt                                                   none      none ok   none ok  
+condition                                               none      A X       none ok  
+question                                                none      none ok   none ok  
+slang negation                                          B         B ok      A X      
+negation without the word 'cliente'                     B         B ok      none X   
+client of a sister company, not of the entity           B         B ok      B ok     
+correction in a later message                           B         B ok      none X   
+caller number is theirs (templates do not apply)        none      none ok   none ok  
+instruction hidden in the client's message              B         B ok      none X   
+
+LLM 11/12 · rules 8/12

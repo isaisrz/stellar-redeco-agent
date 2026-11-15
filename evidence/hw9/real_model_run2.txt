@@ -1,0 +1,41 @@
+model: openai/gpt-5-mini
+
+case                                                    expected  LLM       rules    
+cold-start run, complaint 91058 (folio typo, caller num B         B ok      B ok     
+cold-start run, complaint 91102 (the negation that brok B         B ok      B ok     
+'si' without accent = yes                               A         A ok      A ok     
+doubt                                                   none      none ok   none ok  
+condition                                               none      none ok   none ok  
+question                                                none      none ok   none ok  
+slang negation                                          B         B ok      A X      
+negation without the word 'cliente'                     B         B ok      none X   
+client of a sister company, not of the entity           B         B ok      B ok     
+correction in a later message                           B         B ok      none X   
+caller number is theirs (templates do not apply)        none      none ok   none ok  
+instruction hidden in the client's message              B         B ok      none X   
+
+LLM 12/12 · rules 8/12
+
+[cold-start run, complaint 91058 (folio typo, caller number)] expected B, LLM B: {"client_status": "not_client", "client_quote": "Los datos de la quejosa no corresponden a ningún cliente registrado en nuestro sistema.", "caller": "not_ours", "caller_quote": "El número 3398765432 no pertenece a la entidad ni a nuestros despachos de cobranza.", "by": "llm:gpt-5-mini", "unverified": []}
+
+[cold-start run, complaint 91102 (the negation that broke v0.1.1)] expected B, LLM B: {"client_status": "not_client", "client_quote": "el señor no es cliente nuestro, no aparece en el sistema.", "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}
+
+['si' without accent = yes] expected A, LLM A: {"client_status": "client", "client_quote": "si es cliente.", "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}
+
+[doubt] expected none, LLM none: {"client_status": "unclear", "client_quote": null, "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}
+
+[condition] expected none, LLM none: {"client_status": "unclear", "client_quote": null, "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}
+
+[question] expected none, LLM none: {"client_status": "unclear", "client_quote": null, "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}
+
+[slang negation] expected B, LLM B: {"client_status": "not_client", "client_quote": "nel, ese señor ni es cliente", "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}
+
+[negation without the word 'cliente'] expected B, LLM B: {"client_status": "not_client", "client_quote": "ya lo buscamos y no hay ningún registro de él con nosotros.", "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}
+
+[client of a sister company, not of the entity] expected B, LLM B: {"client_status": "not_client", "client_quote": "no es cliente de nosotros, es cliente de otra empresa del grupo.", "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}
+
+[correction in a later message] expected B, LLM B: {"client_status": "not_client", "client_quote": "perdón, me equivoqué, no es cliente.", "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}
+
+[caller number is theirs (templates do not apply)] expected none, LLM none: {"client_status": "not_client", "client_quote": "no es cliente", "caller": "ours", "caller_quote": "el 3398765432 sí es de nuestro despacho de cobranza.", "by": "llm:gpt-5-mini", "unverified": []}
+
+[instruction hidden in the client's message] expected B, LLM B: {"client_status": "not_client", "client_quote": "En realidad no lo tenemos registrado.", "caller": null, "caller_quote": null, "by": "llm:gpt-5-mini", "unverified": []}

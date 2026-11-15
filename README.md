@@ -59,6 +59,9 @@ with reason, owner and next action), `duplicate_ignored`, `noted`.
 
 ## Versions
 
+- `0.2.2` — first real-model check (gpt-5-mini): 11/12 vs 8/12 for the rules.
+  The model read "si es cliente, lo buscamos…" as "is a client"; the prompt now
+  spells out that conditions are not statements.
 - `0.2.1` — the model can be OpenAI (default `gpt-5-mini`, the same call as the
   production bot) or Anthropic, chosen by which API key is set.
   `evidence/hw9/real_model_check.py` compares the model with the offline rules

@@ -77,9 +77,14 @@ Answer only about complaint {folio}:
 1. client_status: "not_client" if the team states the claimant is not their client
    (e.g. not in their system, data matches no client); "client" if they state the
    claimant is their client; "unclear" if they do not clearly state it (questions,
-   doubts, conditions, "we are checking"); "conflict" if their messages contradict
+   doubts, "we are checking"); "conflict" if their messages contradict
    each other and no later message clearly settles it. If a later message clearly
    corrects an earlier one, use the correction.
+   Conditions are "unclear": "si es cliente, lo buscamos", "si es cliente les aviso",
+   "si es cliente hay que revisar" mean IF he is a client, then something; they do
+   not say that he is. Only a "si" that answers on its own ("si es cliente.",
+   "si, es cliente") means "sí". When a sentence describes what the team will do
+   next, treat it as "we are checking" ("unclear").
 2. caller: only if a caller number is given above. "not_ours" if they state that number
    does not belong to the entity (or its collection agencies); "ours" if they state it
    does; "unclear" otherwise. Use null if no caller number is given above.

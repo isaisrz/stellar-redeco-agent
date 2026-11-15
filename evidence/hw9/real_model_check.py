@@ -81,6 +81,9 @@ def main():
     llm_ok = sum(r["llm"] == r["expected"] for r in results)
     rules_ok = sum(r["rules"] == r["expected"] for r in results)
     print(f"\nLLM {llm_ok}/{len(results)} · rules {rules_ok}/{len(results)}")
+    for r in results:  # the model's own reading, for every case (also in the JSON)
+        print(f"\n[{r['case']}] expected {r['expected']}, LLM {r['llm']}: "
+              + json.dumps(r["llm_reading"], ensure_ascii=False))
     if len(sys.argv) > 1:
         json.dump({"model": "/".join(prov), "results": results}, open(sys.argv[1], "w"),
                   ensure_ascii=False, indent=2)
